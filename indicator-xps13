@@ -1,0 +1,85 @@
+#!/usr/bin/env python
+#
+# Copyright (C) 2015 Alessio Treglia <quadrispro@ubuntu.com>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+import subprocess
+import sys
+from gi.repository import (
+    AppIndicator3 as appindicator,
+    Gtk,
+)
+
+TOUCHSCREEN = "ELAN Touchscreen"
+TOUCHPAD = "DLL0665:01 06CB:76AD UNKNOWN"
+DEVICES = {
+    "touchscreen": TOUCHSCREEN,
+    "touchpad": TOUCHPAD,
+}
+
+
+class Controller(object):
+
+    def device_is_enabled(self, device_id):
+        raw_output = subprocess.check_output(
+            ["xinput", "list-props", device_id]
+        )
+        for raw_line in raw_output.splitlines():
+            if "Enabled" in raw_line:
+                return int(raw_line.split(":")[-1])
+
+    def handler_toggle_device(self, widget, device_id):
+        w_active = int(widget.get_active())
+        if self.device_is_enabled(device_id) != w_active:
+            if w_active == 0:
+                action = "disable"
+            else:
+                action = "enable"
+            subprocess.check_call(
+                ["xinput", action, device_id],
+            )
+            # TODO: check ret value
+
+    def create_device_item(self, device, device_id):
+        status = self.device_is_enabled(device_id=device_id)
+        item = Gtk.CheckMenuItem("Enable {}".format(device))
+        item.set_active(status)
+        item.connect("toggled", self.handler_toggle_device, device_id)
+        item.show()
+        return item
+
+    def register_devices(self, devices):
+        for device, device_id in devices.items():
+            item = self.create_device_item(device, device_id)
+            self.menu.append(item)
+
+    def __init__(self, args, *w, **kw):
+        self.ind = appindicator.Indicator.new(
+            "dell-xps13-indicator",
+            "monitor",
+            appindicator.IndicatorCategory.HARDWARE
+        )
+        self.ind.set_status(appindicator.IndicatorStatus.ACTIVE)
+        self.menu = Gtk.Menu()
+        self.ind.set_menu(self.menu)
+
+
+def main():
+    Controller(sys.argv).register_devices(devices=DEVICES)
+    Gtk.main()
+
+if __name__ == "__main__":
+    main()
